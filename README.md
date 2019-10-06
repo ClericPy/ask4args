@@ -1,9 +1,12 @@
-# baba
+# Ask4args
 Terminal UI to generate config file without learning the documentary.
 
 
 Inspired by [python-fire](https://github.com/google/python-fire), and it maybe need a human-friendly interactive UI.
 
+https://pypi.org/project/ask4args/
+
+> pip install ask4args -U
 
 ```python
 from ask4args.core import Ask4Args
