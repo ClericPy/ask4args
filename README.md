@@ -1,4 +1,4 @@
-# Ask4args
+# [Ask4args](https://github.com/ClericPy/ask4args)
 Terminal UI to generate config file without learning the documentary.
 
 
@@ -86,6 +86,5 @@ if __name__ == "__main__":
     # Ask4Args(TestClass().test_class_method).run()
     # Ask4Args(test_defaults, defaults={'a': 1}).run()
     pass
-
 
 ```

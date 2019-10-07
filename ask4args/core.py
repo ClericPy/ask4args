@@ -1,6 +1,5 @@
 import inspect
-import re
-from collections import namedtuple
+from inspect import _empty, Parameter
 from typing import Any, Dict, List, _alias, _GenericAlias, _SpecialForm
 
 from PyInquirer import (Token, ValidationError, Validator, prompt,
@@ -34,8 +33,25 @@ custom_style_3 = style_from_dict({
     Token.Answer: '#2196f3 bold',
     Token.Question: '',
 })
-Schema = namedtuple('Schema', ['name', 'type', 'default'])
-Validators = {}
+Validators: Dict[str, Validator] = {}
+
+
+def check_type(obj, _type):
+    # only process 2 level inner
+    origin_type = getattr(_type, '__origin__', _type)
+    if not isinstance(obj, origin_type):
+        return False
+    key_type, value_type, *_ = getattr(_type, '__args__',
+                                       (object,)) + (object, object)
+    if origin_type is dict:
+        for k, v in obj.items():
+            if not (isinstance(k, key_type) and isinstance(v, value_type)):
+                return False
+    elif origin_type is list:
+        for v in obj:
+            if not isinstance(v, value_type):
+                return False
+    return True
 
 
 def gen_validate(value_type):
@@ -47,9 +63,8 @@ def gen_validate(value_type):
         try:
             value_type(document.text)
         except ValueError:
-            raise ValidationError(
-                message=f'Please enter a {value_type.__name__}',
-                cursor_position=len(document.text))
+            raise ValidationError(message=f'Please enter a {name}',
+                                  cursor_position=len(document.text))
 
     cls = type(name, (Validator,), {'validate': validate})
     Validators[name] = cls
@@ -58,6 +73,8 @@ def gen_validate(value_type):
 
 class Ask4Args(object):
     sep_sig = f'{"=" * 40}\n'
+    valid_types = {list, int, bool, str, tuple, set, float, dict}
+    NOT_SUPPORT_KIND = {Parameter.POSITIONAL_ONLY, Parameter.VAR_POSITIONAL}
 
     def __init__(self,
                  function,
@@ -80,66 +97,41 @@ class Ask4Args(object):
         """
         if not callable(function):
             raise ValueError
-        self.arg_docs = self.parse_function_doc(function)
         self.function = function
         self.custom_style = custom_style
         self.use_raw_list = use_raw_list
         self.choices = choices or {}
         self.checkboxes = checkboxes or {}
         self.defaults = defaults or {}
+        self._schema_args = None
+        self._kwargs = None
 
-    def run(self):
-        args = self.kwargs
-        kwargs = args['kwargs']
-        kwargs.update(args['varkw'])
+    def run(self, kwargs=None):
+        if kwargs is None:
+            kwargs = self.ask_for_args()
         func_to_run = f'{self.function.__name__}(**{kwargs})'
-        print(f'{self.sep_sig}Start to run {func_to_run}')
+        print(f'{self.sep_sig}Start to run {func_to_run}\n{self.sep_sig}')
         result = self.function(**kwargs)
         print(
             f'{self.sep_sig}{func_to_run} and return {type(result)}:\n{result}')
 
-    def parse_function_doc(self, function) -> Dict[str, str]:
-        arg_docs: Dict[str, str] = {}
-        doc = function.__doc__
-        doc_template = '''
-[summary]
-
-    :param arg1: [description]
-    :type arg1: [type]'''
-        # check valid doc
-        if doc:
-            doc = re.sub(r'^[\s\S]*?:param ', ':param ', doc)
-            items = [
-                item for item in re.split(r'(?=:param)', doc) if item.strip()
-            ]
-            for item in items:
-                matched = re.search(':param (.+?):', item)
-                if matched:
-                    key = matched.group(1).strip()
-                    desc = re.sub(r':type [\s\S]*', '', item).strip()
-                    arg_docs[key] = desc
-        if not arg_docs:
-            print(
-                f'No valid sphinx documentary for function[{function.__name__}], format like:{doc_template}'
-            )
-            return arg_docs
-        return arg_docs
-
-    def handle_input_decorator(self, arg, kw=False):
+    def handle_input_decorator(self, param, kw=False):
         """kw means Dict handler."""
 
         def wrap(is_using_default):
-            # nonlocal arg
-            ops = arg.type.__args__ or (str, str)
+            # nonlocal param
+            ops = param.annotation.__args__ or (str, str)
             type_func1 = ops[0]
             if kw:
                 type_func2 = ops[1]
-            if is_using_default and arg.default != ...:
-                value = type_func1(
-                    arg.default) if callable(type_func1) else arg.default
-                return arg.default
-            elif arg.default == ...:
-                print('No default value, should input one by one.')
+            if is_using_default and param.default is not Parameter.empty:
+                if check_type(param.default, param.annotation):
+                    return param.default
+                else:
+                    print(
+                        f'default value `{param.default}` not fit {param.annotation}, you can set default by self.defaults.'
+                    )
+            print('Invalid default value, should input one by one.')
             if kw:
                 result = {}
             else:
@@ -150,38 +142,63 @@ class Ask4Args(object):
                     if not key.strip():
                         break
                     key = type_func1(key) if callable(type_func1) else key
+                    try:
+                        key = type_func1(key) if callable(type_func1) else key
+                    except ValueError:
+                        print(f'bad value {key}, {type_func1} needed.')
+                        continue
                     value = input('Input the dict\'s value: ')
-                    value = type_func2(value) if callable(type_func2) else value
+                    try:
+                        value = type_func2(value) if callable(
+                            type_func2) else value
+                    except ValueError:
+                        print(f'bad value {value}, {type_func2} needed.')
+                        continue
                     result[key] = value
                 else:
                     value = input('Input the list\'s value(null for break): ')
                     if not value.strip():
                         break
-                    value = type_func1(value) if callable(type_func1) else value
+                    try:
+                        value = type_func1(value) if callable(
+                            type_func1) else value
+                    except ValueError:
+                        print(f'bad value {value}, {type_func1} needed.')
+                        continue
                     result.append(value)
             return result
 
         return wrap
 
     def print_doc(self, value):
+        doc = self.function.__doc__
         if value:
-            print(f'Documentary:\n{self.function.__doc__}')
+            if doc.strip():
+                print(f'Documentary:\n{doc}')
+            else:
+                print('no doc.')
         return value
 
-    def make_question(self, arg) -> Dict:
-        if arg.default == ...:
+    def make_question(self, param) -> Dict:
+        if param.default is Parameter.empty:
             default = '[required]'
         else:
-            default = f'default to {arg.default}'
-        msg = f'Input the value of `{arg.name}`:\n(name: {arg.name}; type: {arg.type}; {default}; {self.arg_docs.get(arg.name, "")})\n'
+            default = f'default to {param.default}'
+        msg = f'Input the value of `{param.name}` (type: {param.annotation}; {default};):\n'
         question = {
             'qmark': self.sep_sig,
             'type': 'input',
-            'name': arg.name,
+            'name': param.name,
         }
         question['message'] = msg
-        origin_type = arg.type.__origin__
-        if arg.name in self.choices:
+        question['validate'] = gen_validate(str)
+        origin_type = param.annotation.__origin__
+        if param.kind in self.NOT_SUPPORT_KIND:
+            question['name'] = '_ask4args_ignore_name'
+            question['type'] = 'confirm'
+            question[
+                'message'] = f'_POSITIONAL_ONLY / VAR_POSITIONAL ({param}) not support for now, will ignore this param.'
+        elif param.name in self.choices:
             if self.use_raw_list:
                 question['type'] = 'rawlist'
             else:
@@ -189,10 +206,11 @@ class Ask4Args(object):
             question['choices'] = [{
                 'name': str(item),
                 'value': item
-            } for item in self.choices[arg.name]]
+            } for item in self.choices[param.name]]
         elif origin_type in {int, float}:
-            if arg.default != ...:
-                question['default'] = str(arg.default)
+            # use default value if fits annotation
+            if check_type(param.default, param.annotation):
+                question['default'] = str(param.default)
             if origin_type is int:
                 question['validate'] = gen_validate(int)
                 question['filter'] = lambda val: int(val)
@@ -201,145 +219,126 @@ class Ask4Args(object):
                 question['filter'] = lambda val: float(val)
         elif origin_type is bool:
             question['type'] = 'confirm'
-            if arg.default == ...:
-                question['default'] = True
-            else:
-                question['default'] = arg.default
+            if param.default is not Parameter.empty:
+                question['default'] = param.default
         elif origin_type in {list, tuple, set}:
-            if arg.default != ...:
+            if param.default is not Parameter.empty:
                 print(
-                    '[Warning] type [list, tuple, dict] will ignore default value.'
+                    '[Warning] [list, tuple, set, dict] will ignore default value, use self.defaults instead.'
                 )
             if self.use_raw_list:
                 question['type'] = 'rawlist'
             else:
                 question['type'] = 'list'
-            if arg.name in self.checkboxes:
+            if param.name in self.checkboxes:
                 question['type'] = 'checkbox'
                 question['choices'] = [{
                     'name': str(item),
                     'value': item
-                } for item in self.checkboxes[arg.name]]
+                } for item in self.checkboxes[param.name]]
             else:
                 question['type'] = 'confirm'
                 question['default'] = True
                 question[
-                    'message'] += f'\nThere is no choice / checkbox, use the default value [{arg.default}](press Y / enter) or input your custom value(press N)'
-                question['filter'] = self.handle_input_decorator(arg)
+                    'message'] += f'\nThere is no choice / checkbox, use the default value [{param.default}](press Y / enter) or input your custom value(press N)'
+                question['filter'] = self.handle_input_decorator(param)
         elif origin_type is dict:
-            if arg.default != ...:
+            if param.default is not Parameter.empty:
                 print(
-                    '[Warning] type [list, tuple, dict] will ignore default value.'
+                    '[Warning] [list, tuple, set, dict] will ignore default value, use self.defaults instead.'
                 )
             question['type'] = 'confirm'
             question['default'] = True
             question[
-                'message'] += f'\nThere is no choice / checkbox, use the default value [{arg.default}](press Y / enter) or input your custom value(press N)'
-            question['filter'] = self.handle_input_decorator(arg, kw=True)
+                'message'] += f'\nThere is no choice / checkbox, use the default value [{param.default}](press Y / enter) or input your custom value(press N)'
+            question['filter'] = self.handle_input_decorator(param, kw=True)
         else:
             # treate as str
             question['filter'] = lambda r: str(r)
-            if arg.default != ...:
-                question['default'] = arg.default
+            if param.default is not Parameter.empty:
+                question['default'] = param.default
         return question
+
+    def deal_with_arg(self, param: Parameter, questions: List, _kwargs: Dict):
+        if param.name in self.defaults:
+            # use default value instead, no need to ask question
+            _kwargs[param.name] = self.defaults[param.name]
+        else:
+            # ask for param value
+            question = self.make_question(param)
+            if question:
+                questions.append(question)
 
     def ask_for_args(self):
         args: dict = self.schema_args
-        self._kwargs = {'kwargs': {}, 'varkw': {}}
+        _kwargs = {}
         questions = []
         if self.function.__doc__:
             questions.append({
                 'type': 'confirm',
-                'name': '_will_show_doc_of_function',
+                'name': '_ask4args_ignore_name',
                 'message': 'Would you want to read the function doc?',
                 'default': False,
                 'filter': self.print_doc
             })
-        for name, arg in args['kwargs'].items():
-            if arg.name in self.defaults:
-                # use default value instead
-                self._kwargs['kwargs'][name] = self.defaults[arg.name]
-            else:
-                question = self.make_question(arg)
-                if question:
-                    questions.append(question)
-        answers = prompt(questions, style=self.custom_style)
-        answers.pop('_will_show_doc_of_function', None)
-        if answers:
-            # self._kwargs['varargs'] = answers.pop(args['varargs_name'], [])
-            self._kwargs['varkw'] = answers.pop(args['varkw_name'], {})
-            self._kwargs['kwargs'] = answers
-        return self._kwargs
+        for param in args['kwargs']:
+            self.deal_with_arg(param, questions, _kwargs)
 
-    @property
-    def kwargs(self):
-        return self.ask_for_args()
+        answers = prompt(questions, style=self.custom_style)
+        for name in list(answers.keys()):
+            if name == '_ask4args_ignore_name':
+                answers.pop(name, None)
+        if args['varkw_name']:
+            varkw = answers.pop(args['varkw_name'], {})
+            _kwargs.update(varkw)
+        if answers:
+            _kwargs.update(answers)
+        return _kwargs
 
     @property
     def schema_args(self):
-        return self.make_schema(self.function)
+        if self._schema_args is None:
+            self._schema_args = self.make_schema()
+        return self._schema_args
 
-    def ensure_type(self, value_type):
-        if isinstance(value_type, _SpecialForm):
-            value_type = object
-        if not isinstance(value_type, _GenericAlias):
-            value_type = _alias(value_type, ())
-        return value_type
+    @classmethod
+    def ensure_type(cls, arg_type):
+        # ignore _SpecialForm
+        if arg_type is Parameter.empty or isinstance(arg_type, _SpecialForm):
+            arg_type = str
+        bad_type = getattr(arg_type, '__origin__',
+                           arg_type) not in cls.valid_types
+        bad_sub_type = any((_arg not in cls.valid_types
+                            for _arg in getattr(arg_type, '__args__', ())))
+        # check cls.valid_types
+        if bad_type or bad_sub_type:
+            raise TypeError(
+                f'As an input should be the base types {cls.valid_types}, but given {arg_type}.'
+            )
+        if not isinstance(arg_type, _GenericAlias):
+            arg_type = _alias(arg_type, ())
+        return arg_type
 
-    def make_schema(self, function) -> Dict[str, Any]:
-        args = inspect.getfullargspec(function)
+    def make_schema(self) -> Dict[str, Any]:
+        sig = inspect.signature(self.function)
         print(
-            f'{self.sep_sig}Preparing the function {function.__name__}{inspect.signature(function)}\n{args}\n{self.sep_sig}'
+            f'{self.sep_sig}Preparing {self.function.__name__}{sig}\n{self.sep_sig}'
         )
-        result: Dict[str, Any] = {}
-        normal_args: List[Schema] = []
-        # add normal_args args
-        defaults = list(args.defaults or ())
-        for name in reversed(args.args):
-            if defaults:
-                default_value = defaults.pop(-1)
-            else:
-                default_value = ...
-            value_type = args.annotations.get(name, Any)
-            normal_args.insert(
-                0, Schema(name, self.ensure_type(value_type), default_value))
-        kwargs = {schema.name: schema for schema in normal_args}
-        for name in args.kwonlyargs:
-            default_value = args.kwonlydefaults.get(name, ...)
-            value_type = args.annotations.get(name, Any)
-            kwargs[name] = Schema(name, self.ensure_type(value_type),
-                                  default_value)
-        # process the *varargs
-        if args.varargs is not None:
-            raise ValueError('do not support varargs like *args.')
-        # process the **varkw
-        if args.varkw is not None:
-            kwargs[args.varkw] = Schema(
-                args.varkw,
-                self.ensure_type(
-                    args.annotations.get(args.varkw, Dict[str, str])), ...)
-        # # process the return annotation
-        # kwargs['return'] = Schema(
-        #     'return', self.ensure_type(args.annotations.get('return', object)),
-        #     ...)
-        kwargs.pop('return', None)
-        valid_types = {list, int, bool, str, tuple, set, float, dict}
-        for index, arg in enumerate(list(kwargs.values())):
-            if index == 0 and arg.name in {
-                    'self', 'cls'
-            } and arg.default == ... and inspect.ismethod(self.function):
-                # ignore method's cls / self
-                kwargs.pop(arg.name, None)
+        kwargs: List[Parameter] = []
+        varkw_name = ''
+        for param in sig.parameters.values():
+            if param.kind == Parameter.VAR_KEYWORD:
+                varkw_name = param.name
+            if param.kind in self.NOT_SUPPORT_KIND:
+                kwargs.append(param)
                 continue
-            if arg.type.__origin__ not in valid_types:
-                raise TypeError(
-                    f'arg type only support the {valid_types}, but given {arg.type.__origin__}'
-                )
-        result['kwargs'] = kwargs
-        # result['varargs_name'] = args.varargs
-        result['varkw_name'] = args.varkw
-        return result
+            arg_type = param.annotation if param.annotation is not Parameter.empty else str
+            arg_type = self.ensure_type(param.annotation)
+            param = param.replace(annotation=arg_type)
+            # normalizing
+
+            kwargs.append(param)
+        return {'kwargs': kwargs, 'varkw_name': varkw_name}
 
     def __str__(self):
-        """example: BaseSchema{'return': Schema(name='return', type=typing.Any, default=Ellipsis), 'all_args': {'a': Schema(name='a', type=<class 'int'>, default=Ellipsis), 'b': Schema(name='b', type=<class 'int'>, default=4), 'args_list': Schema(name='args_list', type=typing.List[str], default=Ellipsis), 'args_dict': Schema(name='args_dict', type=typing.Dict[str, str], default=Ellipsis)}}"""
         return f'{self.__class__.__name__}{self.schema_args}'
