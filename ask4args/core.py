@@ -35,20 +35,25 @@ custom_style_3 = style_from_dict({
     Token.Question: '',
 })
 Schema = namedtuple('Schema', ['name', 'type', 'default'])
+Validators = {}
 
 
-class NumberValidator(Validator):
+def gen_validate(value_type):
+    name = value_type.__name__
+    if name in Validators:
+        return Validators[name]
 
     def validate(self, document):
         try:
-            if document.text.count('.') == 1:
-                float(document.text)
-            else:
-                int(document.text)
+            value_type(document.text)
         except ValueError:
-            raise ValidationError(message='Please enter a number',
-                                  cursor_position=len(
-                                      document.text))  # Move cursor to end
+            raise ValidationError(
+                message=f'Please enter a {value_type.__name__}',
+                cursor_position=len(document.text))
+
+    cls = type(name, (Validator,), {'validate': validate})
+    Validators[name] = cls
+    return cls
 
 
 class Ask4Args(object):
@@ -134,7 +139,7 @@ class Ask4Args(object):
                     arg.default) if callable(type_func1) else arg.default
                 return arg.default
             elif arg.default == ...:
-                print('no default value, should input one by one.')
+                print('No default value, should input one by one.')
             if kw:
                 result = {}
             else:
@@ -160,9 +165,7 @@ class Ask4Args(object):
 
     def print_doc(self, value):
         if value:
-            print(
-                f'Function({self.function.__name__})\'s doc:\n{self.function.__doc__}'
-            )
+            print(f'Documentary:\n{self.function.__doc__}')
         return value
 
     def make_question(self, arg) -> Dict:
@@ -190,10 +193,11 @@ class Ask4Args(object):
         elif origin_type in {int, float}:
             if arg.default != ...:
                 question['default'] = str(arg.default)
-            question['validate'] = NumberValidator
             if origin_type is int:
+                question['validate'] = gen_validate(int)
                 question['filter'] = lambda val: int(val)
             else:
+                question['validate'] = gen_validate(float)
                 question['filter'] = lambda val: float(val)
         elif origin_type is bool:
             question['type'] = 'confirm'
@@ -203,8 +207,8 @@ class Ask4Args(object):
                 question['default'] = arg.default
         elif origin_type in {list, tuple, set}:
             if arg.default != ...:
-                raise ValueError(
-                    'type [list, tuple, dict] can not set default value. Please use BaseSchema `defaults` attr.'
+                print(
+                    '[Warning] type [list, tuple, dict] will ignore default value.'
                 )
             if self.use_raw_list:
                 question['type'] = 'rawlist'
@@ -224,8 +228,8 @@ class Ask4Args(object):
                 question['filter'] = self.handle_input_decorator(arg)
         elif origin_type is dict:
             if arg.default != ...:
-                raise ValueError(
-                    'type [list, tuple, dict] can not set default value. Please use BaseSchema `defaults` attr.'
+                print(
+                    '[Warning] type [list, tuple, dict] will ignore default value.'
                 )
             question['type'] = 'confirm'
             question['default'] = True
@@ -241,9 +245,6 @@ class Ask4Args(object):
 
     def ask_for_args(self):
         args: dict = self.schema_args
-        print(
-            f'function({self.function.__name__})[rtype: {args["kwargs"].pop("return", Schema(0,Any,0)).type}] starts asking for args:'
-        )
         self._kwargs = {'kwargs': {}, 'varkw': {}}
         questions = []
         if self.function.__doc__:
@@ -287,7 +288,9 @@ class Ask4Args(object):
 
     def make_schema(self, function) -> Dict[str, Any]:
         args = inspect.getfullargspec(function)
-        print(args)
+        print(
+            f'{self.sep_sig}Preparing the function {function.__name__}{inspect.signature(function)}\n{args}\n{self.sep_sig}'
+        )
         result: Dict[str, Any] = {}
         normal_args: List[Schema] = []
         # add normal_args args

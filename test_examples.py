@@ -17,6 +17,8 @@ def test_keyword_only_function(a: float,
                                *,
                                c: bool = False,
                                d: str = 'string',
+                               e: int = None,
+                               f: List[int] = None,
                                **args_dict: Dict[str, int]):
     """Read the doc, and test kw-only args.
 
@@ -31,12 +33,13 @@ def test_keyword_only_function(a: float,
     :return: return the args_dict
     :rtype: Dict[str, list]
     """
-    # press y, 1.1, enter, enter, enter, enter, enter, e, enter, 3, enter, enter
     assert a == 1.1
     assert b == 2
     assert c is False
     assert d == 'string'
-    assert args_dict['e'] == 3
+    assert e == 1
+    assert f == [1, 2, 3]
+    assert args_dict['h'] == 3
     return args_dict
 
 
@@ -52,24 +55,20 @@ class TestClass(object):
         assert b == 1
 
 
-def test_checkboxes(a: List[int]):
-    assert a == [1, 2, 3]
-
-
-def test_choices(a: int):
-    assert a == 1
-
-
 def test_defaults(a: int):
     assert a == 1
 
 
 if __name__ == "__main__":
     # Ask4Args(test_normal_function).run()
-    # Ask4Args(test_keyword_only_function).run()
+    # Ask4Args(test_keyword_only_function,
+    #          choices={
+    #              'e': [1, 2, 3, 4, 5]
+    #          },
+    #          checkboxes={
+    #              'f': [1, 2, 3, 4, 5]
+    #          }).run()
     # Ask4Args(TestClass().test_method).run()
     # Ask4Args(TestClass().test_class_method).run()
-    # Ask4Args(test_checkboxes, checkboxes={'a': [1, 2, 3, 4, 5]}).run()
-    # Ask4Args(test_choices, choices={'a': [1, 2, 3, 4, 5]}).run()
     # Ask4Args(test_defaults, defaults={'a': 1}).run()
     pass
