@@ -8,6 +8,12 @@ https://pypi.org/project/ask4args/
 
 > pip install ask4args -U
 
+![demo.gif](demo.gif)
+
+
+
+### Examples
+
 ```python
 from ask4args.core import Ask4Args
 from typing import List, Dict
