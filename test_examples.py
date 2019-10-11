@@ -40,7 +40,7 @@ def test_keyword_only_function(a: float,
     assert e == 1
     assert f == [1, 2, 3]
     assert args_dict['h'] == 3
-    return args_dict
+    return 'success'
 
 
 class TestClass(object):
@@ -63,7 +63,10 @@ if __name__ == "__main__":
     # cls = Ask4ArgsWeb
     cls = Ask4Args
     # cls = Ask4ArgsGUI
-    cls(test_normal_function).run()
+    # =====================
+    # =====================
+    # cls(test_normal_function).run()
+    # =====================
     # cls(test_keyword_only_function,
     #     choices={
     #         'e': [1, 2, 3, 4, 5]
@@ -71,7 +74,10 @@ if __name__ == "__main__":
     #     checkboxes={
     #         'f': [1, 2, 3, 4, 5]
     #     }).run()
+    # =====================
     # cls(TestClass().test_method).run()
+    # =====================
     # cls(TestClass().test_class_method).run()
-    # cls(test_defaults, defaults={'a': 1}).run()
+    # =====================
+    cls(test_defaults, defaults={'a': 1}).run()
     pass

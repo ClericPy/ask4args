@@ -109,8 +109,7 @@ class BaseSchema(object):
     def validate(self, key, text):
         try:
             self.share_kwargs[key] = text
-            f = self.FuncSchema(**self.share_kwargs)
-            self.share_kwargs[key] = getattr(f, key)
+            self.FuncSchema(**self.share_kwargs)
             return True
         except ValidateError as err:
             return f'{err}'.replace('\n', ' ')
@@ -260,19 +259,19 @@ class Ask4Args(BaseSchema):
             default_template = '[required]'
         else:
             default_template = f'default to {param.default}'
-        msg = f'Input the value of `{param.name}` ({default_template};)\n{param.annotation}:'
+        msg = f'Input the value of `{param.name}` ({default_template};) {param.annotation}:'
         question = {
-            'qmark': self.sep_sig,
+            # 'qmark': self.sep_sig,
             'type': 'input',
             'name': param.name,
+            'message': msg,
+            'validate': self.gen_validator(param.name),
         }
-        question['message'] = msg
         origin_type = getattr(param.annotation, '__origin__', param.annotation)
         if isinstance(param.default, (origin_type,)) and param.default:
             question['default'] = str(param.default)
         else:
             question['default'] = ''
-        question['validate'] = self.gen_validator(param.name)
         if param.name in self.choices:
             if self.use_raw_list:
                 question['type'] = 'rawlist'
@@ -282,6 +281,7 @@ class Ask4Args(BaseSchema):
                 'name': str(item),
                 'value': item
             } for item in self.choices[param.name]]
+            # question.pop('validate', None)
         elif origin_type is bool:
             question['type'] = 'confirm'
         elif origin_type in {list, tuple, set}:
@@ -291,6 +291,7 @@ class Ask4Args(BaseSchema):
                 question['type'] = 'list'
             if param.name in self.checkboxes:
                 question['type'] = 'checkbox'
+                question.pop('default', None)
                 question['choices'] = [{
                     'name': str(item),
                     'value': item
@@ -307,10 +308,10 @@ class Ask4Args(BaseSchema):
             question['filter'] = self.handle_input_decorator(param, kw=True)
         return question
 
-    def deal_with_arg(self, param: Parameter, questions: List, _kwargs: Dict):
+    def deal_with_arg(self, param: Parameter, questions: List):
         if param.name in self.defaults:
             # use default value instead, no need to ask question
-            _kwargs[param.name] = self.defaults[param.name]
+            self.share_kwargs[param.name] = self.defaults[param.name]
         else:
             # ask for param value
             question = self.make_question(param)
@@ -319,7 +320,6 @@ class Ask4Args(BaseSchema):
 
     def ask_for_args(self):
         kwargs: dict = self.schema_args
-        _kwargs = {}
         questions = []
         if self.function.__doc__:
             questions.append({
@@ -330,8 +330,11 @@ class Ask4Args(BaseSchema):
                 'filter': self.print_doc
             })
         for param in kwargs:
-            self.deal_with_arg(param, questions, _kwargs)
-        prompt(questions, style=self.custom_style)
+            self.deal_with_arg(param, questions)
+        answers = prompt(questions, style=self.custom_style)
+        answers.pop('_ask4args_ignore_name', None)
+        self.share_kwargs.update(answers)
+        self.share_kwargs = self.FuncSchema(**self.share_kwargs).dict()
         return self.share_kwargs
 
 
