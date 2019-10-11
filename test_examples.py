@@ -1,4 +1,4 @@
-from ask4args.core import Ask4Args
+from ask4args.core import Ask4Args, Ask4ArgsGUI, Ask4ArgsWeb
 from typing import List, Dict
 
 
@@ -60,15 +60,18 @@ def test_defaults(a: int):
 
 
 if __name__ == "__main__":
-    # Ask4Args(test_normal_function).run()
-    # Ask4Args(test_keyword_only_function,
-    #          choices={
-    #              'e': [1, 2, 3, 4, 5]
-    #          },
-    #          checkboxes={
-    #              'f': [1, 2, 3, 4, 5]
-    #          }).run()
-    # Ask4Args(TestClass().test_method).run()
-    # Ask4Args(TestClass().test_class_method).run()
-    # Ask4Args(test_defaults, defaults={'a': 1}).run()
+    # cls = Ask4ArgsWeb
+    cls = Ask4Args
+    # cls = Ask4ArgsGUI
+    cls(test_normal_function).run()
+    # cls(test_keyword_only_function,
+    #     choices={
+    #         'e': [1, 2, 3, 4, 5]
+    #     },
+    #     checkboxes={
+    #         'f': [1, 2, 3, 4, 5]
+    #     }).run()
+    # cls(TestClass().test_method).run()
+    # cls(TestClass().test_class_method).run()
+    # cls(test_defaults, defaults={'a': 1}).run()
     pass
