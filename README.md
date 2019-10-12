@@ -1,6 +1,6 @@
 # [Ask4args](https://github.com/ClericPy/ask4args)
-Terminal UI to generate config file without learning the documentary.
 
+Python-Fire-like, ask for function args by Terminal UI / GUI, ensuring the type annotation.
 
 Inspired by [python-fire](https://github.com/google/python-fire), and it maybe need a human-friendly interactive UI.
 
