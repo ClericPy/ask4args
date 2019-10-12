@@ -1,10 +1,8 @@
 import inspect
-from copy import deepcopy
 from functools import partial
 from inspect import Parameter
-from pathlib import Path
 from typing import Any, AnyStr, Dict, List, _alias, _GenericAlias, _SpecialForm
-
+import os
 import PySimpleGUI as sg
 from pydantic import create_model
 from pydantic.error_wrappers import ValidationError as ValidateError
@@ -72,14 +70,14 @@ class Param(object):
 
 
 class BaseSchema(object):
-    sep_sig = f'{"=" * 40}\n'
+    sep_sig = f'{"=" * 30}\n'
     valid_types = {list, int, bool, str, tuple, set, float, dict}
     NOT_SUPPORT_KIND = {Parameter.POSITIONAL_ONLY, Parameter.VAR_POSITIONAL}
 
     def __init__(self,
                  function,
                  choices: Dict[str, list] = None,
-                 checkboxes: Dict[str, list] = None,
+                 checkboxes: Dict[str, List[Any]] = None,
                  defaults: Dict[str, Any] = None,
                  custom_style: Dict = None,
                  read_doc: bool = True,
@@ -104,35 +102,15 @@ class BaseSchema(object):
         self.choices = choices or {}
         self.checkboxes = checkboxes or {}
         self.defaults = defaults or {}
-        self.share_kwargs: Dict[str, Any] = {}
+        self.NOT_SUPPORT_KIND_MSG: List[str] = []
 
-    def validate(self, key, text):
-        try:
-            self.share_kwargs[key] = text
-            self.FuncSchema(**self.share_kwargs)
-            return True
-        except ValidateError as err:
-            return f'{err}'.replace('\n', ' ')
-
-    def gen_validator(self, key):
-        return partial(self.validate, key)
-
-    def run(self, kwargs=None):
-        if kwargs is None:
-            kwargs = self.ask_for_args()
-        if self.varkw_name:
-            varkw = kwargs.pop(self.varkw_name, {})
-            kwargs.update(varkw)
-        func_to_run = f'{self.function.__name__}(**{kwargs})'
-        print(f'{self.sep_sig}Start to run {func_to_run}\n{self.sep_sig}')
-        result = self.function(**kwargs)
-        print(
-            f'{self.sep_sig}{func_to_run} and return {type(result)}:\n{result}')
+    def run(self):
+        raise NotImplementedError
 
     def ask_for_args(self, *args, **kwargs):
         raise NotImplementedError
 
-    def print_doc(self, value):
+    def print_doc(self, value=True):
         doc = self.function.__doc__
         if value:
             if doc.strip():
@@ -170,12 +148,14 @@ class BaseSchema(object):
         )
         kwargs: List[Parameter] = []
         for param in sig.parameters.values():
+            if param.name in self.defaults:
+                continue
             if param.kind == Parameter.VAR_KEYWORD:
                 self.varkw_name = param.name
             if param.kind in self.NOT_SUPPORT_KIND:
-                print(
-                    f'not support {self.NOT_SUPPORT_KIND}, variable {param} will be ignored.'
-                )
+                msg = f'Not support {param} will be ignored.'
+                print(msg)
+                self.NOT_SUPPORT_KIND_MSG.append(msg)
                 continue
             kwargs.append(
                 Param(param.name, param.kind,
@@ -197,6 +177,31 @@ class Ask4Args(BaseSchema):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.share_kwargs: Dict[str, Any] = {}
+
+    def validate(self, key, text):
+        try:
+            self.share_kwargs[key] = text
+            self.FuncSchema(**self.share_kwargs)
+            return True
+        except ValidateError as err:
+            return f'{err}'.replace('\n', ' ')
+
+    def gen_validator(self, key):
+        return partial(self.validate, key)
+
+    def run(self, kwargs=None):
+        if kwargs is None:
+            kwargs = self.ask_for_args()
+        if self.varkw_name:
+            varkw = kwargs.pop(self.varkw_name, {})
+            kwargs.update(varkw)
+        if self.defaults:
+            kwargs.update(self.defaults)
+        func_to_run = f'{self.function.__name__}(**{kwargs})'
+        print(f'{self.sep_sig}Start to run {func_to_run}\n{self.sep_sig}')
+        result = self.function(**kwargs)
+        print(f'{self.sep_sig}{func_to_run}:\n{result}')
 
     def handle_input_decorator(self, param, kw=False):
         """kw means Dict handler."""
@@ -258,8 +263,8 @@ class Ask4Args(BaseSchema):
         if param.default is Parameter.empty:
             default_template = '[required]'
         else:
-            default_template = f'default to {param.default}'
-        msg = f'Input the value of `{param.name}` ({default_template};) {param.annotation}:'
+            default_template = f'default to {param.default!r}'
+        msg = f'Input the value of `{param.name}` ({default_template}) {param.annotation}:'
         question = {
             # 'qmark': self.sep_sig,
             'type': 'input',
@@ -299,24 +304,20 @@ class Ask4Args(BaseSchema):
             else:
                 question['type'] = 'confirm'
                 question[
-                    'message'] += f'\nThere is no choice / checkbox, use the default value `{param.default}`(press Y / enter) or input your custom value(press N)'
+                    'message'] += f'\nThere is no choice / checkbox, use the default value {param.default!r} (press Y / enter) or input your custom value(press N)'
                 question['filter'] = self.handle_input_decorator(param)
         elif origin_type is dict:
             question['type'] = 'confirm'
             question[
-                'message'] += f'\nThere is no choice / checkbox, use the default value [{param.default}](press Y / enter) or input your custom value(press N)'
+                'message'] += f'\nThere is no choice / checkbox, use the default value {param.default!r} (press Y / enter) or input your custom value(press N)'
             question['filter'] = self.handle_input_decorator(param, kw=True)
         return question
 
     def deal_with_arg(self, param: Parameter, questions: List):
-        if param.name in self.defaults:
-            # use default value instead, no need to ask question
-            self.share_kwargs[param.name] = self.defaults[param.name]
-        else:
-            # ask for param value
-            question = self.make_question(param)
-            if question:
-                questions.append(question)
+        # ask for param value
+        question = self.make_question(param)
+        if question:
+            questions.append(question)
 
     def ask_for_args(self):
         kwargs: dict = self.schema_args
@@ -343,12 +344,130 @@ class Ask4ArgsGUI(BaseSchema):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.checkbox_maps: Dict[str, Any] = {}
+        self.list_type_names = set()
+        self.dict_type_names = set()
+        for key, value in self.checkboxes.items():
+            for v in value:
+                self.checkbox_maps[f'{key}-{v}'] = v
+
+    def input_type_handler(self, param):
+        otype = getattr(param.annotation, '__origin__', param.annotation)
+        if param.name in self.choices:
+            return sg.Combo(
+                values=self.choices[param.name], size=(40, 1), key=param.name)
+        elif param.name in self.checkboxes:
+            cb = self.checkboxes[param.name]
+            return sg.Listbox(
+                values=[str(item) for item in cb],
+                select_mode=sg.LISTBOX_SELECT_MODE_MULTIPLE,
+                size=(45, 3),
+                key=param.name)
+        elif otype in (list, dict):
+            return sg.Multiline('', size=(45, 2), key=param.name)
+        elif otype is bool:
+            return sg.Checkbox(
+                'True',
+                default=param.default
+                if param.default in {True, False} else False,
+                key=param.name)
+        else:
+            return sg.InputText(str(param.default or ''), key=param.name)
+
+    def ensure_defaults(self, values):
+        if self.defaults:
+            values.update(self.defaults)
+        return values
 
     def run(self):
-        pass
+        params: List = self.schema_args
+        layout = [
+            [sg.Text('Input the arg blanks', font=("Helvetica", 25))],
+        ]
+        for param in params:
+            if param.kind == Parameter.VAR_KEYWORD:
+                self.varkw_name = param.name
+            if param.default is Parameter.empty:
+                default_template = '[required]'
+            else:
+                default_template = f'default to {param.default!r}'
+            msg = f'{param.name}, {param.annotation}, {default_template}'
+            otype = getattr(param.annotation, '__origin__', param.annotation)
+            if otype is list:
+                self.list_type_names.add(param.name)
+                msg = f'{msg} (splits by \\n)'
+            elif otype is dict:
+                self.dict_type_names.add(param.name)
+                msg = f'{msg} (splits by \\t & \\n)'
+            _text = sg.Text(msg, font=("Helvetica", 14))
+            _input = self.input_type_handler(param)
+            line = [[_text], [_input]]
+            layout.extend(line)
+        for msg in self.NOT_SUPPORT_KIND_MSG:
+            layout.append([sg.Text(msg, font=("Helvetica", 12))])
+        layout.append([
+            sg.Button(
+                'Ok', size=(8, 1), button_color=('black', 'white'), key='ok'),
+            sg.Button('Cancel', size=(8, 1), button_color=('black', 'white')),
+            sg.Button('Doc', size=(8, 1), button_color=('black', 'white')),
+            sg.Button('Clear', size=(8, 1), button_color=('black', 'white'))
+        ])
 
-    def ask_for_args(self):
-        args: dict = self.schema_args
+        layout.append([
+            sg.Output(
+                size=(60, 15), font=('Helvetica', 12), key='Ask4ArgsGUIOutput')
+        ])
+        window = sg.Window(f'{self.function.__name__} - Ask4ArgsGUI', layout)
+        while True:
+            event, values = window.Read()
+            if event == 'Clear':
+                window.FindElement('Ask4ArgsGUIOutput').Update('')
+                continue
+            elif event == 'ok':
+                # trans str into list
+                if self.list_type_names:
+                    for name in self.list_type_names:
+                        if isinstance(values[name], list):
+                            continue
+                        value = values[name].strip()
+                        if value:
+                            values[name] = value.split('\n')
+                        else:
+                            values[name] = []
+                if self.dict_type_names:
+                    for name in self.dict_type_names:
+                        if isinstance(values[name], dict):
+                            continue
+                        value = {}
+                        if values[name].strip():
+                            for line in values[name].split('\n'):
+                                line = line.strip()
+                                if line:
+                                    k, v = line.split('\t')
+                                    value[k] = v
+                        values[name] = value
+                values = self.ensure_defaults(values)
+                func_to_run = f'{self.function.__name__}(**{values})'
+                print(
+                    f'{self.sep_sig}Start to run {func_to_run}\n{self.sep_sig}')
+                try:
+                    kwargs = self.FuncSchema(**values).dict()
+                    kwargs = self.ensure_defaults(kwargs)
+                    if self.varkw_name:
+                        _values = kwargs.pop(self.varkw_name, {})
+                        kwargs.update(_values)
+                    result = self.function(**kwargs)
+                except ValidateError as err:
+                    result = f'{err}'
+                print(f'[Return]\n{self.sep_sig}{result}')
+                continue
+            elif event in (None, 'Cancel'):
+                quit()
+            elif event == 'Doc':
+                self.print_doc()
+                continue
+
+        window.Close()
 
 
 class Ask4ArgsWeb(BaseSchema):
@@ -357,19 +476,3 @@ class Ask4ArgsWeb(BaseSchema):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         raise NotImplementedError
-
-
-if __name__ == "__main__":
-
-    def test(a,
-             b: int = 2,
-             *,
-             c: bool = False,
-             d: str = 'string',
-             e: int = None,
-             f: List[int] = None,
-             **args_dict: Dict[str, int]):
-        """doc"""
-        pass
-
-    print(Ask4Args(test).run())

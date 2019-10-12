@@ -2,14 +2,13 @@ from ask4args.core import Ask4Args, Ask4ArgsGUI, Ask4ArgsWeb
 from typing import List, Dict
 
 
-def test_normal_function(a: int, b: int = 2,
-                         **args_dict: Dict[str, int]) -> str:
+def test_normal_function(a: int, b: int = 2, **args_dict: Dict[str, int]):
     # first a value=1, args_dict['c']=3, others use default.
     # press 1, enter, enter, enter, c, enter, 3, enter, enter
     assert a == 1
     assert b == 2
     assert args_dict['c'] == 3
-    return 'success'
+    return ('success', vars())
 
 
 def test_keyword_only_function(a: float,
@@ -40,7 +39,7 @@ def test_keyword_only_function(a: float,
     assert e == 1
     assert f == [1, 2, 3]
     assert args_dict['h'] == 3
-    return 'success'
+    return ('success', vars())
 
 
 class TestClass(object):
@@ -48,25 +47,30 @@ class TestClass(object):
     def test_method(self, a: str, b: int = 1):
         assert a == ''
         assert b == 1
+        return ('success', vars())
 
     @classmethod
     def test_class_method(cls, a: str, b: int = 1):
         assert a == ''
         assert b == 1
+        return ('success', vars())
 
 
 def test_defaults(a: int):
     assert a == 1
+    return ('success', vars())
 
 
 if __name__ == "__main__":
     # cls = Ask4ArgsWeb
-    cls = Ask4Args
-    # cls = Ask4ArgsGUI
+    # cls = Ask4Args
+    cls = Ask4ArgsGUI
     # =====================
     # =====================
+    # ('success', {'a': 1, 'b': 2, 'args_dict': {'c': 3}})
     # cls(test_normal_function).run()
     # =====================
+    # ('success', {'a': 1.1, 'b': 2, 'c': False, 'd': 'string', 'e': 1, 'f': [1, 2, 3], 'args_dict': {'h': 3}})
     # cls(test_keyword_only_function,
     #     choices={
     #         'e': [1, 2, 3, 4, 5]
@@ -79,5 +83,5 @@ if __name__ == "__main__":
     # =====================
     # cls(TestClass().test_class_method).run()
     # =====================
-    cls(test_defaults, defaults={'a': 1}).run()
+    # cls(test_defaults, defaults={'a': 1}).run()
     pass
