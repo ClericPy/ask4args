@@ -3,8 +3,11 @@ from typing import List, Dict
 
 
 def test_normal_function(a: int, b: int = 2, **args_dict: Dict[str, int]):
-    # first a value=1, args_dict['c']=3, others use default.
-    # press 1, enter, enter, enter, c, enter, 3, enter, enter
+    '''
+    assert a == 1
+    assert b == 2
+    assert args_dict['c'] == 3
+    '''
     assert a == 1
     assert b == 2
     assert args_dict['c'] == 3
@@ -68,20 +71,20 @@ if __name__ == "__main__":
     # =====================
     # =====================
     # ('success', {'a': 1, 'b': 2, 'args_dict': {'c': 3}})
-    # cls(test_normal_function).run()
+    cls(test_normal_function).run()
     # =====================
     # ('success', {'a': 1.1, 'b': 2, 'c': False, 'd': 'string', 'e': 1, 'f': [1, 2, 3], 'args_dict': {'h': 3}})
-    # cls(test_keyword_only_function,
-    #     choices={
-    #         'e': [1, 2, 3, 4, 5]
-    #     },
-    #     checkboxes={
-    #         'f': [1, 2, 3, 4, 5]
-    #     }).run()
+    cls(test_keyword_only_function,
+        choices={
+            'e': [1, 2, 3, 4, 5]
+        },
+        checkboxes={
+            'f': [1, 2, 3, 4, 5]
+        }).run()
     # =====================
-    # cls(TestClass().test_method).run()
+    cls(TestClass().test_method).run()
     # =====================
-    # cls(TestClass().test_class_method).run()
+    cls(TestClass().test_class_method).run()
     # =====================
-    # cls(test_defaults, defaults={'a': 1}).run()
+    cls(test_defaults, defaults={'a': 1}).run()
     pass

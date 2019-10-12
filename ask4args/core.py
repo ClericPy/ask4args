@@ -114,7 +114,7 @@ class BaseSchema(object):
         doc = self.function.__doc__
         if value:
             if doc.strip():
-                print(f'Documentary:\n{doc}')
+                print(f'Documentary:\n{"_" * 20}\n{doc}')
             else:
                 print('no doc.')
         return value
@@ -462,7 +462,7 @@ class Ask4ArgsGUI(BaseSchema):
                 print(f'[Return]\n{self.sep_sig}{result}')
                 continue
             elif event in (None, 'Cancel'):
-                quit()
+                break
             elif event == 'Doc':
                 self.print_doc()
                 continue

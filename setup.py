@@ -20,7 +20,7 @@ setup(
     version=version,
     keywords=("fire", "REPL", "Terminal UI"),
     description=
-    "Terminal UI to generate config file without learning the documentary.. Read more: https://github.com/ClericPy/ask4args.",
+    "Python-Fire-like, ask for function args by Terminal UI / GUI, ensuring the type annotation. Read more: https://github.com/ClericPy/ask4args.",
     license="MIT License",
     install_requires=install_requires,
     long_description=README,
