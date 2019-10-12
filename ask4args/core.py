@@ -382,7 +382,7 @@ class Ask4ArgsGUI(BaseSchema):
     def run(self):
         params: List = self.schema_args
         layout = [
-            [sg.Text('Input the arg blanks', font=("Helvetica", 25))],
+            [sg.Text('Fill in the blanks', font=("Helvetica", 25))],
         ]
         for param in params:
             if param.kind == Parameter.VAR_KEYWORD:
