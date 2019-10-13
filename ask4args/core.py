@@ -1,12 +1,13 @@
 import inspect
+import os
 from functools import partial
 from inspect import Parameter
 from typing import Any, AnyStr, Dict, List, _alias, _GenericAlias, _SpecialForm
-import os
+
 import PySimpleGUI as sg
 from pydantic import create_model
 from pydantic.error_wrappers import ValidationError as ValidateError
-from PyInquirer import (Token, Validator, prompt, style_from_dict)
+from PyInquirer import Token, Validator, prompt, style_from_dict
 
 custom_style_1 = style_from_dict({
     Token.Separator: '#cc5454',

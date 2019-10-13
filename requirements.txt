@@ -1,1 +1,3 @@
 PyInquirer
+pysimplegui
+pydantic
