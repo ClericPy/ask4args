@@ -1,20 +1,24 @@
 # [Ask4args](https://github.com/ClericPy/ask4args)
 
-Python-Fire-like, ask for function args by Terminal UI / GUI, ensuring the type annotation.
+Ask for function args by Terminal UI / GUI, ensuring the type annotation. Inspired by [python-fire](https://github.com/google/python-fire), and it maybe need a human-friendly interactive UI.
 
-Inspired by [python-fire](https://github.com/google/python-fire), and it maybe need a human-friendly interactive UI.
-
-- [x] Terminal UI
-- [x] GUI
-- [ ] ~~Web UI~~ (no need to do)
+### Install
 
 > pip install ask4args -U
 
+### Simple Usage
+
+> python3 -m ask4args module:function
+
+#### Terminal UI
+
 ![demo.gif](demo.gif)
+
+#### GUI
 
 ![demo2.png](demo2.png)
 
-### Examples
+### More Usage Examples
 
 ```python
 from ask4args.core import Ask4Args, Ask4ArgsGUI, Ask4ArgsWeb
@@ -106,3 +110,9 @@ if __name__ == "__main__":
     pass
 
 ```
+
+### TODO
+
+- [x] Terminal UI
+- [x] GUI
+- [ ] ~~Web UI~~ (no need to do)
